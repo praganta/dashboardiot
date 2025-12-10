@@ -10,14 +10,20 @@ type Alert = {
   title: string;
   severity: Severity;
   valueText: string;
-  ts: number; // timestamp yang stabil
+  ts: number; // timestamp stabil (sensor)
   suggestion: string;
 };
 
-function severityColor(sev: Severity) {
-  if (sev === "CRIT") return "text-red-200 border-red-500/40 neon-outline-red";
-  if (sev === "WARN") return "text-amber-200 border-amber-500/40";
-  return "text-slate-200 border-slate-500/40";
+function severityBadge(sev: Severity) {
+  if (sev === "CRIT")
+    return "text-rose-200 border-rose-500/40 neon-outline-red bg-rose-500/10";
+  if (sev === "WARN")
+    return "text-amber-200 border-amber-400/40 bg-amber-400/10";
+  return "text-cyan-200 border-cyan-400/30 bg-cyan-400/10";
+}
+
+function severityRank(sev: Severity) {
+  return sev === "CRIT" ? 0 : sev === "WARN" ? 1 : 2;
 }
 
 function formatTime(ms: number) {
@@ -40,87 +46,99 @@ export function AlertsRules({
   status: Status;
   ts: number | null;
 }) {
-  // ✅ NOW dibuat state biar SSR & first client render sama (null)
+  // SSR-safe: first render null, then client update
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
-    // jalan hanya di client
     setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000); // kalau mau age jalan realtime
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
   const alerts = useMemo<Alert[]>(() => {
-    // kalau now masih null (SSR + first paint), jangan bikin alert berbasis umur
     const out: Alert[] = [];
+
     const safeNow = now ?? ts ?? 0;
     const safeTs = ts ?? safeNow;
 
-    // R5 Gateway offline / stale
-    if (!ts || status === "OFFLINE") {
+    const ageSec =
+      ts && now ? Math.max(0, Math.floor((safeNow - ts) / 1000)) : null;
+
+    const stale =
+      ts && now ? safeNow - ts > 2 * 60 * 1000 : false; // 2 menit
+
+    // Gateway offline / stale
+    if (!ts || status === "OFFLINE" || stale) {
       out.push({
         id: "gateway-offline",
-        title: "Gateway Offline / Data Stale",
+        title: !ts
+          ? "Gateway Tidak Mengirim Data"
+          : status === "OFFLINE"
+          ? "Gateway Offline"
+          : "Data Terlalu Lama (Stale)",
         severity: "CRIT",
-        valueText:
-          ts && now
-            ? `Age ${Math.floor((safeNow - ts) / 1000)}s`
-            : "No timestamp",
+        valueText: ageSec != null ? `Age ${ageSec}s` : "No timestamp",
         ts: safeTs,
-        suggestion: "Check ESP32 power / WiFi / ThingsBoard token.",
+        suggestion:
+          "Cek power ESP32, WiFi, dan token ThingsBoard. Restart jika perlu.",
       });
-      return out;
+      return out; // kalau CRIT gateway, stop rule lain
     }
 
-    // R1 Temp High
+    // Temperature high
     if (temperature != null && temperature > 28) {
       out.push({
         id: "temp-high",
-        title: "Temperature High",
+        title: "Suhu Terlalu Tinggi",
         severity: temperature > 30 ? "CRIT" : "WARN",
         valueText: `${temperature.toFixed(1)}°C`,
         ts: safeTs,
-        suggestion: "Fan ON / check ventilation.",
+        suggestion: "Nyalakan fan / cek ventilasi kumbung.",
       });
     }
 
-    // R2 Temp Low
+    // Temperature low
     if (temperature != null && temperature < 22) {
       out.push({
         id: "temp-low",
-        title: "Temperature Low",
+        title: "Suhu Terlalu Rendah",
         severity: temperature < 20 ? "CRIT" : "WARN",
         valueText: `${temperature.toFixed(1)}°C`,
         ts: safeTs,
-        suggestion: "Reduce airflow / heater if available.",
+        suggestion: "Kurangi airflow / gunakan pemanas bila ada.",
       });
     }
 
-    // R3 RH High
+    // RH high
     if (humidity != null && humidity > 90) {
       out.push({
         id: "rh-high",
-        title: "Humidity High",
+        title: "Kelembapan Terlalu Tinggi",
         severity: humidity > 94 ? "CRIT" : "WARN",
         valueText: `${humidity.toFixed(1)}%`,
         ts: safeTs,
-        suggestion: "Increase exhaust / fan ON.",
+        suggestion: "Tingkatkan exhaust / fan ON.",
       });
     }
 
-    // R4 RH Low
+    // RH low
     if (humidity != null && humidity < 70) {
       out.push({
         id: "rh-low",
-        title: "Humidity Low",
+        title: "Kelembapan Terlalu Rendah",
         severity: humidity < 65 ? "CRIT" : "WARN",
         valueText: `${humidity.toFixed(1)}%`,
         ts: safeTs,
-        suggestion: "Mist ON / add water.",
+        suggestion: "Mist ON / tambah air.",
       });
     }
 
-    return out;
+    // sort by severity then newest
+    return out.sort((a, b) => {
+      const s = severityRank(a.severity) - severityRank(b.severity);
+      if (s !== 0) return s;
+      return b.ts - a.ts;
+    });
   }, [temperature, humidity, status, ts, now]);
 
   const globalState =
@@ -143,25 +161,24 @@ export function AlertsRules({
             <div className="text-xs text-slate-400">System State</div>
             <div className="mt-1 text-2xl font-semibold">{globalState}</div>
             <div className="mt-2 text-xs text-slate-500">
-              Active alerts: {alerts.length}
+              Alert aktif: {alerts.length}
             </div>
 
-            {/* ✅ ts stabil, aman ditampilkan */}
             {updatedText && (
               <div className="text-xs text-slate-500">
-                Updated: {updatedText} WIB
+                Update terakhir: {updatedText} WIB
               </div>
             )}
           </div>
 
           <div className="text-xs text-slate-400 space-y-1">
             <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-red-400" />
+              <span className="h-2 w-2 rounded-full bg-rose-400" />
               CRIT = tindakan segera
             </div>
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-amber-400" />
-              WARN = waspada
+              WARN = perlu perhatian
             </div>
           </div>
         </div>
@@ -170,13 +187,16 @@ export function AlertsRules({
         <div className="lg:col-span-2 space-y-2">
           {alerts.length === 0 ? (
             <div className="rounded-xl border border-emerald-500/30 glass p-4 text-emerald-200">
-              ✅ Tidak ada alert aktif. Kondisi ideal.
+              ✅ Kondisi stabil — tidak ada alert aktif.
+              <div className="text-xs text-emerald-300/80 mt-1">
+                Semua parameter berada di rentang ideal.
+              </div>
             </div>
           ) : (
             alerts.map((a) => (
               <div
                 key={a.id}
-                className={`rounded-xl border glass p-4 ${severityColor(
+                className={`rounded-xl border glass p-4 ${severityBadge(
                   a.severity
                 )}`}
               >
@@ -184,11 +204,7 @@ export function AlertsRules({
                   <div className="font-semibold">
                     {a.severity} — {a.title}
                   </div>
-
-                  {/* ✅ pake ts stabil, dan now hanya buat age (bukan timestamp utama) */}
-                  <div className="text-xs opacity-70">
-                    {formatTime(a.ts)}
-                  </div>
+                  <div className="text-xs opacity-70">{formatTime(a.ts)}</div>
                 </div>
 
                 <div className="mt-1 text-sm">

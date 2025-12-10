@@ -82,3 +82,81 @@ body::before{
     0 0 0 1px rgba(248,113,113,0.3),
     0 0 18px rgba(248,113,113,0.15);
 }
+
+/* ================= LIVE BUTTON ================= */
+
+.btn-live{
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .01em;
+  transition: all .2s ease;
+  border: 1px solid rgba(148,163,184,0.22);
+  background: rgba(8,15,35,0.7);
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 0 0 1px rgba(34,211,238,0.06),
+    0 10px 30px rgba(0,0,0,0.5);
+}
+
+.btn-live--on{
+  color: #0b1220;
+  background: linear-gradient(90deg, #a78bfa, #22d3ee);
+  border-color: rgba(34,211,238,0.6);
+  box-shadow:
+    0 0 0 1px rgba(34,211,238,0.45),
+    0 0 18px rgba(34,211,238,0.35);
+}
+
+.btn-live--off{
+  color: rgba(226,232,240,0.9);
+}
+
+.btn-live:hover{
+  transform: translateY(-1px);
+}
+
+/* glow tipis pas hover */
+.btn-live-glow{
+  position: absolute;
+  inset: -6px -10px;
+  border-radius: 999px;
+  opacity: 0;
+  transition: opacity .2s ease;
+  box-shadow: 0 0 28px rgba(167,139,250,0.35);
+  pointer-events: none;
+}
+.btn-live:hover .btn-live-glow{
+  opacity: 1;
+}
+
+/* ================= LIVE DOT ================= */
+
+.live-dot{
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.live-dot--on{
+  background: #ff3b3b;
+  box-shadow: 0 0 10px rgba(255,59,59,.9);
+  animation: livePulse 1.2s infinite ease-in-out;
+}
+
+.live-dot--off{
+  background: rgba(148,163,184,0.6);
+  box-shadow: none;
+}
+
+@keyframes livePulse{
+  0% { transform: scale(0.85); opacity: .55; }
+  50%{ transform: scale(1.25); opacity: 1; }
+  100%{ transform: scale(0.85); opacity: .55; }
+}

@@ -30,7 +30,7 @@ export function TelemetryChart() {
 
   async function load() {
     try {
-      const res = await fetch("/api/tb/history");
+      const res = await fetch("/api/tb/history", { cache: "no-store" });
       if (!res.ok) {
         console.error("Failed to fetch history");
         return;
@@ -77,35 +77,67 @@ export function TelemetryChart() {
   return (
     <div className="w-full h-64 sm:h-80">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+        <LineChart
+          data={data}
+          margin={{ top: 10, right: 24, left: 0, bottom: 10 }}
+        >
           <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} />
-          <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-          <YAxis tick={{ fontSize: 10 }} />
+
+          <XAxis dataKey="time" tick={{ fontSize: 10 }} minTickGap={16} />
+
+          {/* Y kiri suhu (FIXED 0–100°C) */}
+          <YAxis
+            yAxisId="temp"
+            tick={{ fontSize: 10 }}
+            domain={[0, 100]}
+            tickFormatter={(v) => `${v}°C`}
+          />
+
+          {/* Y kanan RH (FIXED 0–100%) */}
+          <YAxis
+            yAxisId="hum"
+            orientation="right"
+            tick={{ fontSize: 10 }}
+            domain={[0, 100]}
+            tickFormatter={(v) => `${v}%`}
+          />
+
           <Tooltip
             contentStyle={{
-              backgroundColor: "#111827", // bg-slate-900
-              border: "1px solid #374151", // border-slate-700
+              backgroundColor: "#111827",
+              border: "1px solid #374151",
               borderRadius: "8px",
               color: "white",
+              fontSize: "12px",
             }}
           />
           <Legend />
+
           <Line
+            yAxisId="temp"
             type="monotone"
             dataKey="temperature"
             name="Temperature (°C)"
-            stroke="#60A5FA" // biru
-            strokeWidth={2}
+            stroke="#60A5FA"
+            strokeWidth={2.2}
             dot={false}
+            isAnimationActive
+            animationDuration={600}
+            connectNulls
           />
+
           <Line
+            yAxisId="hum"
             type="monotone"
             dataKey="humidity"
             name="Humidity (%)"
-            stroke="#34D399" // hijau
+            stroke="#34D399"
             strokeDasharray="5 5"
-            strokeWidth={2}
+            strokeWidth={2.2}
             dot={false}
+            isAnimationActive
+            animationDuration={600}
+            connectNulls
           />
         </LineChart>
       </ResponsiveContainer>

@@ -7,6 +7,7 @@ import { TrendInsights } from "./TrendInsights";
 import { AlertsRules } from "./AlertsRules";
 
 type Status = "ONLINE" | "OFFLINE" | "UNKNOWN";
+type ZoneId = "A" | "B" | "C";
 
 /** helper buat detect section aktif */
 function useActiveSection(ids: string[]) {
@@ -43,6 +44,9 @@ export default function Home() {
   const [humidity, setHumidity] = useState<number | null>(null);
   const [status, setStatus] = useState<Status>("UNKNOWN");
   const [lastUpdateTs, setLastUpdateTs] = useState<number | null>(null);
+
+  // ✅ Zona aktif dari HERO 3D (buat dipakai di page 5)
+  const [heroZone, setHeroZone] = useState<ZoneId>("A");
 
   // scrollY progress 0..1
   const [scrollY, setScrollY] = useState(0);
@@ -119,6 +123,51 @@ export default function Home() {
     temperature <= 28 &&
     humidity >= 70 &&
     humidity <= 90;
+
+  // delta vs ideal (buat diagnosis/action)
+  const tempDelta =
+    temperature != null
+      ? temperature < 22
+        ? -(22 - temperature)
+        : temperature > 28
+        ? temperature - 28
+        : 0
+      : null;
+
+  const humDelta =
+    humidity != null
+      ? humidity < 70
+        ? -(70 - humidity)
+        : humidity > 90
+        ? humidity - 90
+        : 0
+      : null;
+
+  // rekomendasi action sederhana
+  function getActions() {
+    if (status === "OFFLINE" || lastUpdateTs == null) {
+      return [
+        "Periksa power ESP32 dan koneksi WiFi.",
+        "Cek token ThingsBoard dan endpoint API.",
+        "Pastikan device mengirim telemetry.",
+      ];
+    }
+
+    const out: string[] = [];
+    if (temperature != null && temperature > 28)
+      out.push("Nyalakan Fan / tambah exhaust (suhu tinggi).");
+    if (temperature != null && temperature < 22)
+      out.push("Kurangi airflow / gunakan pemanas jika ada (suhu rendah).");
+    if (humidity != null && humidity < 70)
+      out.push("Aktifkan Mist / tambah sumber air (RH rendah).");
+    if (humidity != null && humidity > 90)
+      out.push("Tingkatkan ventilasi / fan ON (RH tinggi).");
+
+    if (out.length === 0) out.push("Monitoring normal, kondisi stabil.");
+    return out;
+  }
+
+  const actions = getActions();
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -201,10 +250,21 @@ export default function Home() {
               <div className="pt-4 flex gap-2 flex-wrap">
                 <a
                   href="#live"
-                  className="rounded-full bg-white text-slate-950 px-4 py-2 text-sm font-medium hover:bg-slate-200 transition"
+                  className={
+                    status === "ONLINE"
+                      ? "btn-live btn-live--on"
+                      : "btn-live btn-live--off"
+                  }
                 >
+                  <span
+                    className={`live-dot ${
+                      status === "ONLINE" ? "live-dot--on" : "live-dot--off"
+                    }`}
+                  />
                   Lihat Live Data
+                  <span className="btn-live-glow" />
                 </a>
+
                 <a
                   href="#alerts"
                   className="rounded-full border border-slate-700 px-4 py-2 text-sm hover:bg-slate-900 transition glass"
@@ -229,6 +289,8 @@ export default function Home() {
                 temperature={temperature}
                 humidity={humidity}
                 focus={0.15}
+                activeZone={heroZone}
+                onActiveZoneChange={setHeroZone}
               />
             </div>
           </div>
@@ -306,28 +368,28 @@ export default function Home() {
           </div>
         </section>
 
-        {/* =========== ENVIRONMENT / HUD SECTION (tanpa 3D) =========== */}
+        {/* =========== ENVIRONMENT / CONDITIONING (PAKET B) =========== */}
         <section
           id="environment"
           className="snap-start min-h-screen flex items-center"
         >
-          <div className="max-w-6xl mx-auto px-4 py-10 w-full grid gap-8 lg:grid-cols-2 items-center">
-            {/* HUD kiri */}
-            <div className="space-y-4">
-              <p className="hud-title">Conditioning</p>
-
-              <h2 className="text-3xl font-bold">Maintain Ideal Condition</h2>
-
-              <p className="text-sm text-slate-300 max-w-md">
-                Jaga suhu di <b>22–28°C</b> dan kelembapan di{" "}
-                <b>70–90% </b>. Sistem menyalakan fan/mist otomatis jika keluar batas.
-              </p>
+          <div className="max-w-6xl mx-auto px-4 py-10 w-full grid gap-6 lg:grid-cols-3 items-start">
+            {/* ================= MONITORING (BESAR) ================= */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="space-y-2">
+                <p className="hud-title">Conditioning</p>
+                <h2 className="text-3xl font-bold">Maintain Ideal Condition</h2>
+                <p className="text-sm text-slate-300 max-w-xl">
+                  Jaga suhu di <b>22–28°C</b> dan kelembapan di <b>70–90%</b>.
+                  Sistem menyalakan fan/mist otomatis jika keluar batas.
+                </p>
+              </div>
 
               {!isIdeal && (
                 <div className="rounded-xl border border-red-500/40 glass neon-outline-red px-4 py-3 text-sm text-red-200">
                   ⚠️ Warning: kondisi di luar rentang ideal.
                   <div className="text-xs text-red-300/80 mt-1">
-                    Cek alerts, lalu inspect sensor A/B/C di panel 3D.
+                    Fokus cek sensor zona <b>{heroZone}</b> dari panel 3D.
                   </div>
                 </div>
               )}
@@ -383,7 +445,9 @@ export default function Home() {
                     className="h-full bg-emerald-400 transition-all"
                     style={{
                       width: `${
-                        humidity != null ? Math.min(100, Math.max(0, humidity)) : 0
+                        humidity != null
+                          ? Math.min(100, Math.max(0, humidity))
+                          : 0
                       }%`,
                     }}
                   />
@@ -424,18 +488,85 @@ export default function Home() {
               </div>
 
               <div className="rounded-xl border border-slate-800 glass p-3 text-xs text-slate-300">
-                🎮 Inspect sensor A/B/C dari 3D panel di halaman pertama.
+                🎮 Inspect sensor Zona <b>{heroZone}</b> dari panel 3D di halaman pertama.{" "}
+                <a href="#hero" className="underline ml-1">
+                  Klik untuk kembali
+                </a>
               </div>
             </div>
 
-            {/* kanan: info ringkas aja */}
-            <div className="rounded-2xl border border-slate-800 glass p-6 space-y-3">
-              <div className="text-sm text-slate-400">Quick Summary</div>
-              <div className="text-2xl font-semibold">
-                {isIdeal ? "Condition Stable" : "Needs Attention"}
+            {/* ================= DIAGNOSIS (KANAN ATAS) ================= */}
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-800 glass p-5 space-y-3">
+                <div className="text-sm text-slate-400">Diagnosis</div>
+
+                <div className="text-xl font-semibold">
+                  {status === "OFFLINE" || lastUpdateTs == null
+                    ? "Data Tidak Masuk"
+                    : isIdeal
+                    ? "Kondisi Ideal"
+                    : "Perlu Perhatian"}
+                </div>
+
+                <div className="text-sm text-slate-300 space-y-1">
+                  {temperature != null && (
+                    <div>
+                      Suhu sekarang{" "}
+                      <b>{temperature.toFixed(1)}°C</b>{" "}
+                      {tempDelta != null && tempDelta !== 0 && (
+                        <span className="text-slate-400">
+                          ({tempDelta > 0 ? "+" : ""}
+                          {tempDelta.toFixed(1)}° dari ideal)
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {humidity != null && (
+                    <div>
+                      RH sekarang <b>{humidity.toFixed(1)}%</b>{" "}
+                      {humDelta != null && humDelta !== 0 && (
+                        <span className="text-slate-400">
+                          ({humDelta > 0 ? "+" : ""}
+                          {humDelta.toFixed(1)}% dari ideal)
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  <div>
+                    Fokus sensor: <b>Zona {heroZone}</b>
+                  </div>
+
+                  {lastUpdateText && (
+                    <div className="text-xs text-slate-500">
+                      Update terakhir: {lastUpdateText} WIB
+                    </div>
+                  )}
+                </div>
+
+                {/* ringkasan 24 jam dari TrendInsights */}
+                <div className="pt-2">
+                  <TrendInsights />
+                </div>
               </div>
-              <div className="text-sm text-slate-300">
-                Pantau Alerts untuk tahu rule mana yang aktif.
+
+              {/* ================= ACTION (KANAN BAWAH) ================= */}
+              <div className="rounded-2xl border border-slate-800 glass p-5 space-y-3">
+                <div className="text-sm text-slate-400">Recommended Action</div>
+
+                <ul className="text-sm text-slate-200 space-y-2">
+                  {actions.map((a, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="mt-[2px]">✅</span>
+                      <span>{a}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="text-xs text-slate-500 pt-1">
+                  Tips: kalau warning muncul terus, cek Alerts + inspect zona di 3D.
+                </div>
               </div>
             </div>
           </div>

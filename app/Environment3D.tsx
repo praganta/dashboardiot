@@ -1,23 +1,21 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import React, {
-  Suspense,
-  useMemo,
-  useRef,
-  useState,
-  useEffect,
-} from "react";
+import React, { Suspense, useMemo, useRef, useState, useEffect } from "react";
 import * as THREE from "three";
 import { Html } from "@react-three/drei";
+
+type ZoneId = "A" | "B" | "C";
 
 type Props = {
   temperature: number | null;
   humidity: number | null;
   focus?: number; // 0..1 scroll zoom
-};
 
-type ZoneId = "A" | "B" | "C";
+  // ✅ controlled active zone (optional)
+  activeZone?: ZoneId;
+  onActiveZoneChange?: (z: ZoneId) => void;
+};
 
 /* ================= Utils ================= */
 
@@ -27,24 +25,23 @@ function clamp01(x: number) {
 
 /** Palet IoT modern (hindari dominan putih/abu/hitam) */
 const PALETTE = {
-  chamberFloor: "#1b2bbf", // deep electric blue
-  chamberWall: "#9f7aea", // violet
-  rackA: "#18b7a5", // teal
-  rackB: "#ff8f1f", // orange
-  rackC: "#e84dbf", // pink-magenta
-  rackTop: "#2ee6a6", // mint neon
-  fanHousing: "#202a7a", // indigo
-  mistBase: "#7dd3fc", // sky
-  capBase: "#ffd54f", // warm yellow
-  stemBase: "#ffe0b2", // cream tipis
+  chamberFloor: "#1b2bbf",
+  chamberWall: "#9f7aea",
+  rackA: "#18b7a5",
+  rackB: "#ff8f1f",
+  rackC: "#e84dbf",
+  rackTop: "#2ee6a6",
+  fanHousing: "#202a7a",
+  mistBase: "#7dd3fc",
+  capBase: "#ffd54f",
+  stemBase: "#ffe0b2",
 };
 
-/** warna kondisi suhu untuk glow environment */
 function tempToColor(t: number | null) {
-  if (t == null) return new THREE.Color("#22d3ee"); // cyan netral
-  if (t < 22) return new THREE.Color("#3b82f6"); // dingin blue
-  if (t <= 28) return new THREE.Color("#22c55e"); // ideal green
-  return new THREE.Color("#fb7185"); // panas pink-red
+  if (t == null) return new THREE.Color("#22d3ee");
+  if (t < 22) return new THREE.Color("#3b82f6");
+  if (t <= 28) return new THREE.Color("#22c55e");
+  return new THREE.Color("#fb7185");
 }
 function tempToIntensity(t: number | null) {
   if (t == null) return 0.6;
@@ -56,8 +53,6 @@ function humToMistDensity(h: number | null) {
   const n = clamp01((h - 50) / 50);
   return 0.012 + n * 0.09;
 }
-
-/** warna indikator zona buat jamur */
 function zoneToColor(z: ZoneId) {
   if (z === "A") return new THREE.Color(PALETTE.rackA);
   if (z === "B") return new THREE.Color(PALETTE.rackB);
@@ -90,7 +85,7 @@ function MistParticles({
   const pointsRef = useRef<THREE.Points>(null);
 
   const { positions, speeds } = useMemo(() => {
-    const count = 140; // ringan
+    const count = 140;
     const pos = new Float32Array(count * 3);
     const spd = new Float32Array(count);
 
@@ -235,28 +230,23 @@ function CenterMushroom({
   glowColor: THREE.Color;
   activeZone: ZoneId;
   onClick: () => void;
-  slideFromX: number; // start posisi x dari kiri/kanan
-  slideKey: number;   // biar reset animasi tiap ganti zona
+  slideFromX: number;
+  slideKey: number;
 }) {
   const ref = useRef<THREE.Group>(null);
   const zoneColor = useMemo(() => zoneToColor(activeZone), [activeZone]);
 
-  // posisi target tetap di tengah
   const targetPos = useMemo(() => new THREE.Vector3(0, 0.72, 0.15), []);
 
-  // reset posisi jamur tiap ganti zona → mulai dari kiri/kanan
   useEffect(() => {
     if (!ref.current) return;
     ref.current.position.set(slideFromX, targetPos.y, targetPos.z);
-  }, [slideKey, slideFromX, targetPos.y, targetPos.z]);
+  }, [slideKey, slideFromX, targetPos]);
 
   useFrame((state) => {
     if (!ref.current) return;
-
-    // slide halus menuju tengah
     ref.current.position.lerp(targetPos, 0.12);
 
-    // idle kecil
     const t = state.clock.elapsedTime;
     ref.current.rotation.y = Math.sin(t * 0.7) * 0.035;
     ref.current.scale.setScalar(1 + Math.sin(t * 1.8) * 0.015);
@@ -274,13 +264,11 @@ function CenterMushroom({
         onClick();
       }}
     >
-      {/* stem */}
       <mesh position={[0, stemH / 2, 0]}>
         <cylinderGeometry args={[0.06, 0.085, stemH, 16]} />
         <meshStandardMaterial color={PALETTE.stemBase} roughness={0.85} />
       </mesh>
 
-      {/* cap */}
       <mesh position={[0, stemH + 0.06, 0]}>
         <sphereGeometry args={[0.17, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
         <meshStandardMaterial
@@ -292,7 +280,6 @@ function CenterMushroom({
         />
       </mesh>
 
-      {/* ring indikator zona */}
       <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.11, 0.24, 32]} />
         <meshStandardMaterial
@@ -392,13 +379,11 @@ function ChamberScene({
     <>
       <fog attach="fog" args={["#2a2ad6", 3.2, 9]} />
 
-      {/* floor */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
         <planeGeometry args={[8, 4]} />
         <meshStandardMaterial color={PALETTE.chamberFloor} roughness={0.95} />
       </mesh>
 
-      {/* walls */}
       <mesh ref={backWallRef} position={[0, 1.35, -0.95]}>
         <boxGeometry args={[6.4, 2.9, 0.08]} />
         <meshStandardMaterial color={PALETTE.chamberWall} roughness={0.9} />
@@ -416,16 +401,13 @@ function ChamberScene({
         <meshStandardMaterial color={PALETTE.chamberWall} roughness={0.9} />
       </mesh>
 
-      {/* racks (tetap 3 buat konteks zona ABC) */}
       <GrowRack position={[-1.9, 0.25, 0.35]} baseColor={PALETTE.rackA} />
       <GrowRack position={[0, 0.25, 0.05]} baseColor={PALETTE.rackB} />
       <GrowRack position={[1.9, 0.25, -0.25]} baseColor={PALETTE.rackC} />
 
-      {/* fans */}
       <Fan position={[-2.45, 2.2, 0.7]} temp={temperature} glowColor={envColor} />
       <Fan position={[2.45, 2.2, 0.7]} temp={temperature} glowColor={envColor} />
 
-      {/* jamur slide dari kiri/kanan lalu stop di tengah */}
       <CenterMushroom
         glowColor={envColor}
         activeZone={activeZone}
@@ -434,10 +416,8 @@ function ChamberScene({
         slideKey={slideKey}
       />
 
-      {/* effects */}
       <MistParticles density={mistDensity} color={envColor} />
 
-      {/* lighting */}
       <ambientLight intensity={0.8} />
       <directionalLight position={[4, 6, 3]} intensity={1.0} color={"#ffe9b0"} />
       <directionalLight
@@ -452,19 +432,34 @@ function ChamberScene({
 
 /* ================= Export ================= */
 
-export function Environment3D({ temperature, humidity, focus = 0 }: Props) {
+export function Environment3D({
+  temperature,
+  humidity,
+  focus = 0,
+  activeZone: activeZoneProp,
+  onActiveZoneChange,
+}: Props) {
   const t = temperature ?? null;
   const h = humidity ?? null;
   const headerColor = useMemo(() => tempToColor(t), [t]);
 
   const zones: ZoneId[] = ["A", "B", "C"];
-  const [activeZone, setActiveZone] = useState<ZoneId>("A");
+
+  const isControlled = activeZoneProp != null;
+  const [internalZone, setInternalZone] = useState<ZoneId>("A");
+
+  const activeZone = isControlled ? activeZoneProp! : internalZone;
+
   const [showTooltip, setShowTooltip] = useState(false);
 
-  // buat tau arah slide (kiri/kanan)
-  const prevZoneRef = useRef<ZoneId>("A");
+  const prevZoneRef = useRef<ZoneId>(activeZone);
   const [slideFromX, setSlideFromX] = useState(0.9);
   const [slideKey, setSlideKey] = useState(0);
+
+  function setZone(z: ZoneId) {
+    if (!isControlled) setInternalZone(z);
+    onActiveZoneChange?.(z);
+  }
 
   function goToZone(next: ZoneId) {
     const prev = prevZoneRef.current;
@@ -472,12 +467,12 @@ export function Environment3D({ temperature, humidity, focus = 0 }: Props) {
 
     const prevIdx = zones.indexOf(prev);
     const nextIdx = zones.indexOf(next);
-    const dir = nextIdx > prevIdx ? 1 : -1; // kanan atau kiri
+    const dir = nextIdx > prevIdx ? 1 : -1;
 
-    setSlideFromX(dir * 0.9); // start dari kanan/kiri
-    setActiveZone(next);
+    setSlideFromX(dir * 0.9);
+    setZone(next);
     setShowTooltip(false);
-    setSlideKey((k) => k + 1); // trigger reset animasi
+    setSlideKey((k) => k + 1);
   }
 
   function prevZone() {
@@ -493,7 +488,6 @@ export function Environment3D({ temperature, humidity, focus = 0 }: Props) {
 
   return (
     <div className="relative w-full h-80 rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
-      {/* overlay kiri atas */}
       <div className="absolute left-3 top-3 z-10 text-xs bg-slate-950/90 rounded-md px-3 py-2 border border-slate-700 text-slate-100 shadow">
         <div>T: {t != null ? `${t.toFixed(1)}°C` : "—"}</div>
         <div>H: {h != null ? `${h.toFixed(1)}%` : "—"}</div>
@@ -505,25 +499,54 @@ export function Environment3D({ temperature, humidity, focus = 0 }: Props) {
         </div>
       </div>
 
-      {/* arrows */}
-      <div className="absolute z-10 right-3 top-3 flex gap-2">
+      {/* arrows HUD style */}
+      <div className="absolute z-10 right-4 top-4 flex gap-2">
         <button
           onClick={prevZone}
-          className="h-8 w-8 rounded-full grid place-items-center border border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-900"
+          className="group h-9 w-9 rounded-full grid place-items-center
+            bg-gradient-to-br from-fuchsia-500/80 to-cyan-400/80
+            shadow-[0_0_20px_rgba(34,211,238,0.45)]
+            border border-white/10 backdrop-blur
+            transition active:scale-95 hover:shadow-[0_0_28px_rgba(236,72,153,0.7)]"
           aria-label="Previous zone"
         >
-          ◀
+          <span className="text-white text-lg translate-x-[-1px] group-hover:-translate-x-0.5 transition">
+            ❮
+          </span>
         </button>
+
         <button
           onClick={nextZone}
-          className="h-8 w-8 rounded-full grid place-items-center border border-slate-700 bg-slate-950/80 text-slate-100 hover:bg-slate-900"
+          className="group h-9 w-9 rounded-full grid place-items-center
+            bg-gradient-to-br from-cyan-400/80 to-emerald-400/80
+            shadow-[0_0_20px_rgba(16,185,129,0.45)]
+            border border-white/10 backdrop-blur
+            transition active:scale-95 hover:shadow-[0_0_28px_rgba(34,211,238,0.7)]"
           aria-label="Next zone"
         >
-          ▶
+          <span className="text-white text-lg translate-x-[1px] group-hover:translate-x-0.5 transition">
+            ❯
+          </span>
         </button>
       </div>
 
-      {/* label zona aktif */}
+      {/* dots indicator */}
+      <div className="absolute z-10 right-4 top-16 flex gap-2">
+        {zones.map((z) => (
+          <button
+            key={z}
+            onClick={() => goToZone(z)}
+            className={`h-2.5 w-2.5 rounded-full transition
+              ${
+                activeZone === z
+                  ? "bg-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.9)] scale-125"
+                  : "bg-slate-500/60 hover:bg-slate-300"
+              }`}
+            aria-label={`Zone ${z}`}
+          />
+        ))}
+      </div>
+
       <div className="absolute z-10 right-3 top-14 text-[11px] px-2 py-1 rounded-md border border-slate-700 bg-slate-950/80 text-slate-100">
         Jamur Zona {activeZone}
       </div>
